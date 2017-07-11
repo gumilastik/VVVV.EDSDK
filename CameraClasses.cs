@@ -612,7 +612,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 				{
 					Bitmap bmp = null;
 					IntPtr streamRef, jpgPointer = IntPtr.Zero;
-					uint length = 0;
+					UInt64 length = 0;
 					
 					//create memory stream
 					Error = EDSDK.EdsCreateMemoryStream(dirInfo.Size, out streamRef);
@@ -625,7 +625,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 					unsafe
 					{
 						//create a System.IO.Stream from the pointer
-						using (UnmanagedMemoryStream ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), length, length, FileAccess.Read))
+						using (UnmanagedMemoryStream ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), (long)length, (long)length, FileAccess.Read))
 						{
 							//create bitmap from stream (it's a normal jpeg image)
 							bmp = new Bitmap(ums);
@@ -713,13 +713,17 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 				int datalength = outputSize.height * outputSize.width * 3;
 				//create buffer that stores the image
 				byte[] buffer = new byte[datalength];
-				//create a stream to the buffer
-				Error = EDSDK.EdsCreateMemoryStreamFromPointer(buffer, (uint)datalength, out stream);
+                //create a stream to the buffer
+                IntPtr unmanagedPointer = Marshal.AllocHGlobal(buffer.Length);
+                Marshal.Copy(buffer, 0, unmanagedPointer, buffer.Length);
+                // Call unmanaged code
+                
+                Error = EDSDK.EdsCreateMemoryStreamFromPointer(unmanagedPointer, (uint)datalength, out stream);
 				//load image into the buffer
 				Error = EDSDK.EdsGetImage(img_ref, imageSource, EDSDK.EdsTargetImageType.RGB, imageInfo.EffectiveRect, outputSize, stream);
-				
-				//create output bitmap
-				Bitmap bmp = new Bitmap(outputSize.width, outputSize.height, PixelFormat.Format24bppRgb);
+                Marshal.FreeHGlobal(unmanagedPointer);
+                //create output bitmap
+                Bitmap bmp = new Bitmap(outputSize.width, outputSize.height, PixelFormat.Format24bppRgb);
 				
 				//assign values to bitmap and make BGR from RGB (System.Drawing (i.e. GDI+) uses BGR)
 				unsafe
@@ -952,7 +956,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 					UnmanagedMemoryStream ums;
 					
 					uint err;
-					uint length;
+					UInt64 length;
 					//create stream
 					Error = EDSDK.EdsCreateMemoryStream(0, out stream);
 					
@@ -985,7 +989,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 						if (EvfImageRef != IntPtr.Zero) { Error = EDSDK.EdsRelease(EvfImageRef); }
 						
 						//create stream to image
-						unsafe { ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), length, length, FileAccess.Read); }
+						unsafe { ums = new UnmanagedMemoryStream((byte*)jpgPointer.ToPointer(), (long)length, (long)length, FileAccess.Read); }
 						
 						// FIX ?
 						if(stopwatch.Elapsed.Minutes > 5)
@@ -1018,8 +1022,9 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 		{
 			int size = Marshal.SizeOf(typeof(EDSDK.EdsRect));
 			IntPtr ptr = Marshal.AllocHGlobal(size);
-			uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_ZoomRect, 0, size, ptr);
-			EDSDK.EdsRect rect = (EDSDK.EdsRect)Marshal.PtrToStructure(ptr, typeof(EDSDK.EdsRect));
+            //uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_ZoomRect, 0, size, ptr);
+            uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_ZoomPosition, 0, size, ptr);
+            EDSDK.EdsRect rect = (EDSDK.EdsRect)Marshal.PtrToStructure(ptr, typeof(EDSDK.EdsRect));
 			Marshal.FreeHGlobal(ptr);
 			if (err == EDSDK.EDS_ERR_OK) return rect;
 			else return new EDSDK.EdsRect();
@@ -1034,8 +1039,9 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 		{
 			int size = Marshal.SizeOf(typeof(EDSDK.EdsSize));
 			IntPtr ptr = Marshal.AllocHGlobal(size);
-			uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_CoordinateSystem, 0, size, ptr);
-			EDSDK.EdsSize coord = (EDSDK.EdsSize)Marshal.PtrToStructure(ptr, typeof(EDSDK.EdsSize));
+            //uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_CoordinateSystem, 0, size, ptr);
+            uint err = EDSDK.EdsGetPropertyData(imgRef, EDSDK.PropID_Evf_ImagePosition, 0, size, ptr);
+            EDSDK.EdsSize coord = (EDSDK.EdsSize)Marshal.PtrToStructure(ptr, typeof(EDSDK.EdsSize));
 			Marshal.FreeHGlobal(ptr);
 			if (err == EDSDK.EDS_ERR_OK) return coord;
 			else return new EDSDK.EdsSize();
@@ -1131,7 +1137,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 			SendSDKCommand(delegate
 			{
 				//send command to camera
-				lock (STAThread.ExecLock) { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (uint)state); };
+				lock (STAThread.ExecLock) { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (int)state); };
 			}, true);
 		}
 		
@@ -1143,7 +1149,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 			{
 				//send command to camera
 				lock (STAThread.ExecLock) {
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (uint)state);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (int)state);
 					//Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (uint)EDSDK.EdsEvfAf.CameraCommand_EvfAf_ON);
 				};
 			}, true);
@@ -1156,7 +1162,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 			{
 				//send command to camera
 				lock (STAThread.ExecLock) {
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (uint)EDSDK.EdsEvfAf.CameraCommand_EvfAf_OFF);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (int)EDSDK.EdsEvfAf.CameraCommand_EvfAf_OFF);
 					
 					int propsize;
 					EDSDK.EdsDataType proptype;
@@ -1165,7 +1171,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 					//set given property
 					EDSDK.EdsSetPropertyData(MainCamera.Ref, EDSDK.PropID_Evf_AFMode, 0, propsize, af);
 					
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (uint)EDSDK.EdsEvfAf.CameraCommand_EvfAf_ON);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoEvfAf, (int)EDSDK.EdsEvfAf.CameraCommand_EvfAf_ON);
 					
 					//Thread.Sleep(500);
 				};
@@ -1207,9 +1213,9 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 				//send command to camera
 				lock (STAThread.ExecLock)
 				{
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (uint)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_Halfway_NonAF);
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (uint)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_Completely_NonAF);
-					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (uint)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_OFF);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (int)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_Halfway_NonAF);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (int)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_Completely_NonAF);
+					Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_PressShutterButton, (int)EDSDK.EdsShutterButton.CameraCommand_ShutterButton_OFF);
 				};
 			}, true);
 		}
@@ -1292,7 +1298,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 		public void SetFocus(uint Speed)
 		{
 			// if (IsLiveViewOn) // fix
-			SendSDKCommand(delegate { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DriveLensEvf, Speed); });
+			SendSDKCommand(delegate { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DriveLensEvf, (int)Speed); });
 		}
 		
 		/// <summary>
@@ -1309,7 +1315,7 @@ set { if (value != EDSDK.EDS_ERR_OK) throw new Exception("SDK Error: 0x" + value
 				byte[] ya = BitConverter.GetBytes(y);
 				uint coord = BitConverter.ToUInt32(new byte[] { xa[0], xa[1], ya[0], ya[1] }, 0);
 				//send command to camera
-				SendSDKCommand(delegate { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoClickWBEvf, coord); });
+				SendSDKCommand(delegate { Error = EDSDK.EdsSendCommand(MainCamera.Ref, EDSDK.CameraCommand_DoClickWBEvf, (int)coord); });
 			}
 		}
 		
