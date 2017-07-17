@@ -18,6 +18,7 @@ using FeralTic.DX11.Resources;
 #endregion usings
 
 using System.Threading;
+using FeralTic.DX11;
 
 /*
 TODO:
@@ -30,7 +31,7 @@ namespace VVVV.DX11.Nodes
 	#region PluginInfo
 	[PluginInfo(Name = "EDSDK", AutoEvaluate = true, Category = "Canon", Help = "", Tags = "")]
 	#endregion PluginInfo
-	public class EDSDKNode : IPluginEvaluate, IDX11ResourceProvider, IDisposable
+	public class EDSDKNode : IPluginEvaluate, IDX11ResourceHost, IDisposable
 	{
 		#region fields & pins
 		[Input("Device ID")]
@@ -78,7 +79,7 @@ namespace VVVV.DX11.Nodes
 		[Input("Take Video")]
 		public IDiffSpread<bool> FInTakeVideo;
 		
-		[Input("Update", IsBang = true)]
+		[Input("Update", IsBang = true, IsSingle = true)]
 		public ISpread<bool> FInUpdate;
 		
 		[Input("Enable")]
@@ -444,7 +445,8 @@ ED-SDK Generic Error IDs
 				
 				if (FInSavePath.IsChanged || isChanged)
 				{
-					CameraHandler.ImageSaveDirectory = FInSavePath[0];
+                    CameraHandler.ImageSaveDirectory = FInSavePath[0];
+                    //CameraHandler.ImageSaveDirectory = "C:\\VVVV\\";
 					
 				}
 				
@@ -513,57 +515,17 @@ ED-SDK Generic Error IDs
 			
 			//FLogger.Log(LogType.Debug, "hi tty!");
 		}
-		
-		public void Update(IPluginIO pin, FeralTic.DX11.DX11RenderContext context)
-		{
-			for (int i = 0; i < this.FTextureOutput.SliceCount; i++)
-			{
-				if (update == true)
-				{
-					// recreate texture if pin was disconnected
-					if(!this.FTextureOutput[i].Contains(context))
-					{
-						//FLogger.Log(LogType.Debug, "recreate!");
-						this.FTextureOutput[i][context] = new DX11DynamicTexture2D(context, bmp.Width, bmp.Height, SlimDX.DXGI.Format.B8G8R8A8_UNorm);
-						this.FOutValid[i] = true;
-					}
-					
-					lock (locker)
-					{
-						BitmapData data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-						
-						if (bmp.Width * 4 == this.FTextureOutput[i][context].GetRowPitch())
-						{
-							this.FTextureOutput[i][context].WriteData(data.Scan0, bmp.Width * bmp.Height * 4);
-						}
-						else
-						{
-							this.FTextureOutput[i][context].WriteDataPitch(data.Scan0, bmp.Width * bmp.Height * 4);
-						}
-						
-						bmp.UnlockBits(data);
-						bmp.Dispose();
-						bmp = null;
-						
-						update = false;
-					}
-				}
-			}
-		}
-		
-		public void Destroy(IPluginIO pin, FeralTic.DX11.DX11RenderContext context, bool force)
-		{
-			FLogger.Log(LogType.Debug, "Destroy!");
-			for (int i = 0; i < this.FTextureOutput.SliceCount; i++)
-			{
-				if (this.FTextureOutput[i] != null)
-				{
-					this.FTextureOutput[i].Dispose(context);
-				}
-			}
-		}
-		
-		public void Dispose()
+
+        /*	public void Update(IPluginIO pin, FeralTic.DX11.DX11RenderContext context)
+            {
+
+            }
+
+            public void Destroy(IPluginIO pin, FeralTic.DX11.DX11RenderContext context, bool force)
+            {
+            }
+        */
+        public void Dispose()
 		{
 			FLogger.Log(LogType.Debug, "Dispose!");
 			for (int i = 0; i < this.FTextureOutput.SliceCount; i++)
@@ -588,7 +550,7 @@ ED-SDK Generic Error IDs
 					CameraHandler.OpenSession(CamList[FInDeviceID[0]]);
 					string cameraname = CameraHandler.MainCamera.Info.szDeviceDescription;
 					
-					FOutError[0] = (CameraHandler.GetSetting(EDSDK.PropID_AEMode) != EDSDK.AEMode_Manual) ? "Camera is not in manual mode. Some features might not work!" : "";
+					FOutError[0] = (CameraHandler.GetSetting(EDSDK.PropID_AEMode) != EDSDK.AEMode_Mamual) ? "Camera is not in manual mode. Some features might not work!" : "";
 					
 					FOutName.SliceCount = 1;
 					FOutPort.SliceCount = 1;
@@ -689,8 +651,54 @@ ED-SDK Generic Error IDs
 			
 			if (FInLiveView[0] && CameraHandler.IsLiveViewOn) { FLogger.Log(LogType.Debug, "StopLiveView"); CameraHandler.StopLiveView(); }
 		}
-		
-		
-		
-	}
+
+        public void Update(DX11RenderContext context)
+        {
+            for (int i = 0; i < this.FTextureOutput.SliceCount; i++)
+            {
+                if (update == true)
+                {
+                    // recreate texture if pin was disconnected
+                    if (!this.FTextureOutput[i].Contains(context))
+                    {
+                        //FLogger.Log(LogType.Debug, "recreate!");
+                        this.FTextureOutput[i][context] = new DX11DynamicTexture2D(context, bmp.Width, bmp.Height, SlimDX.DXGI.Format.B8G8R8A8_UNorm);
+                        this.FOutValid[i] = true;
+                    }
+
+                    lock (locker)
+                    {
+                        BitmapData data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+
+                        if (bmp.Width * 4 == this.FTextureOutput[i][context].GetRowPitch())
+                        {
+                            this.FTextureOutput[i][context].WriteData(data.Scan0, bmp.Width * bmp.Height * 4);
+                        }
+                        else
+                        {
+                            this.FTextureOutput[i][context].WriteDataPitch(data.Scan0, bmp.Width * bmp.Height * 4);
+                        }
+
+                        bmp.UnlockBits(data);
+                        bmp.Dispose();
+                        bmp = null;
+
+                        update = false;
+                    }
+                }
+            }
+        }
+
+        public void Destroy(DX11RenderContext context, bool force)
+        {
+            FLogger.Log(LogType.Debug, "Destroy!");
+            for (int i = 0; i < this.FTextureOutput.SliceCount; i++)
+            {
+                if (this.FTextureOutput[i] != null)
+                {
+                    this.FTextureOutput[i].Dispose(context);
+                }
+            }
+        }
+    }
 }
